@@ -23,8 +23,8 @@ jobs:
           $end=$source.IndexOf('    if ($LASTEXITCODE) { throw ''Baseline release', $start)
           if($start -lt 0 -or $end -le $start){throw 'Publisher lookup block missing'}
           $lookup=$source.Substring($start,$end-$start)
-          $expectedHashes=@{'v0.0.8'='27f8309220b20ab674392616ef630ecc813737c9125bfda7059ce6dbcbd61402'}
-          foreach($baselineTag in @('v0.0.8')){
+          $expectedHashes=@{'v0.0.1'='dc8f213aa3cbd2659529eb6cd8b0d298c9138e74d4b9142e42a52c774a27f488'}
+          foreach($baselineTag in @('v0.0.1')){
             $work=Join-Path $env:RUNNER_TEMP "lookup-$baselineTag"
             New-Item -ItemType Directory -Path $work | Out-Null
             Invoke-Expression $lookup

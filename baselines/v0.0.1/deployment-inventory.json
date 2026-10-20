@@ -1,11 +1,11 @@
 {
     "format": 1,
-    "version": "0.0.8",
-    "shell_sha256": "9c41390336bfefdf4db67350adf943ef32543d17090a992dda84882d502456b8",
+    "version": "0.0.1",
+    "shell_sha256": "64a9ef5af16dbe36d7bce672484f8d3e15a772f26e9664f9038aecd097cf9ffd",
     "files": {
         "backend/backend.phar": {
-            "sha256": "7510670c0aab330b673e8e90b7c215fcfa5451a0352b749f8984a9d891c90ecd",
-            "size": 98324677
+            "sha256": "7f3e717f7cbc03166ac0509998fe03613cae310325f92c7e4b1cb6ae217211e1",
+            "size": 98324839
         },
         "backend/certs/cacert.pem": {
             "sha256": "b6e66569cc3d438dd5abe514d0df50005d570bfc96c14dca8f768d020cb96171",
@@ -248,8 +248,8 @@
             "size": 15140
         },
         "version.json": {
-            "sha256": "a4bb37d65e657cafa40d7a7a3a04fa99a432c043f1eb143f5d5983971ba54f6a",
-            "size": 637
+            "sha256": "6a66341a7709f13e050b6d629bda842366bc230b10ca7c15d9166b9b5c245a10",
+            "size": 799
         }
     }
 }
