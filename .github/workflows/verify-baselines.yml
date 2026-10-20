@@ -19,10 +19,11 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $source=Get-Content scripts/build-delta-release.ps1 -Raw
-          $start=$source.IndexOf('    $inventoryReleaseTag =')
+          $start=$source.IndexOf('    $baselineInventoryUrl =')
           $end=$source.IndexOf('    if ($LASTEXITCODE) { throw ''Baseline release', $start)
           if($start -lt 0 -or $end -le $start){throw 'Publisher lookup block missing'}
           $lookup=$source.Substring($start,$end-$start)
+          $expectedHashes=@{'v0.0.8'='27f8309220b20ab674392616ef630ecc813737c9125bfda7059ce6dbcbd61402';'v0.0.9'='60991218064af3bb88b26e361d2b80edd41c378d12da6dec580a324970cc463b'}
           foreach($baselineTag in @('v0.0.8','v0.0.9')){
             $work=Join-Path $env:RUNNER_TEMP "lookup-$baselineTag"
             New-Item -ItemType Directory -Path $work | Out-Null
@@ -30,7 +31,6 @@ jobs:
             if($LASTEXITCODE){throw 'Actual publisher download failed'}
             $inventory=Get-Content (Join-Path $work 'deployment-inventory.json') -Raw | ConvertFrom-Json
             if($inventory.version -ne $baselineTag.Substring(1)){throw 'Wrong baseline inventory'}
-            if($baselineTag -eq 'v0.0.8' -and $inventoryReleaseTag -ne 'baseline-v0.0.8'){throw 'Build baseline was not selected'}
-            if($baselineTag -eq 'v0.0.9' -and $inventoryReleaseTag -ne 'v0.0.9'){throw 'Ordinary delta inventory fallback failed'}
-            Write-Host "Verified $inventoryReleaseTag inventory $($inventory.version)"
+            if((Get-FileHash (Join-Path $work 'deployment-inventory.json') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedHashes[$baselineTag]){throw 'Baseline bytes differ from verified deployment inventory'}
+            Write-Host "Verified $baselineTag inventory $($inventory.version)"
           }
