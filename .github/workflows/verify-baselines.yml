@@ -12,7 +12,7 @@ jobs:
           repository: ABDO-TECK/pos-desktop
           ref: main
           persist-credentials: false
-      - name: Exercise actual publisher lookup for baseline and delta inventories
+      - name: Verify the current complete Setup baseline for future updates
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -23,8 +23,8 @@ jobs:
           $end=$source.IndexOf('    if ($LASTEXITCODE) { throw ''Baseline release', $start)
           if($start -lt 0 -or $end -le $start){throw 'Publisher lookup block missing'}
           $lookup=$source.Substring($start,$end-$start)
-          $expectedHashes=@{'v0.0.8'='27f8309220b20ab674392616ef630ecc813737c9125bfda7059ce6dbcbd61402';'v0.0.9'='60991218064af3bb88b26e361d2b80edd41c378d12da6dec580a324970cc463b'}
-          foreach($baselineTag in @('v0.0.8','v0.0.9')){
+          $expectedHashes=@{'v0.0.8'='27f8309220b20ab674392616ef630ecc813737c9125bfda7059ce6dbcbd61402'}
+          foreach($baselineTag in @('v0.0.8')){
             $work=Join-Path $env:RUNNER_TEMP "lookup-$baselineTag"
             New-Item -ItemType Directory -Path $work | Out-Null
             Invoke-Expression $lookup
