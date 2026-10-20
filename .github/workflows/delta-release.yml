@@ -41,7 +41,7 @@ jobs:
     needs: metadata
     if: needs.metadata.outputs.mode == 'delta'
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +78,16 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           php scripts/verify-phar-runtime.php
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          php scripts/verify-asset-download.php
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/verify-duplicate-release-entries.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          php scripts/verify-delta-download-failure.php
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/verify-asset-download-https.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/verify-update-repair.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           php scripts/verify-update-execution-budget.php
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node scripts/verify-update-http-timeout.mjs
@@ -98,6 +108,18 @@ jobs:
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
         run: ./scripts/build-delta-release.ps1 -Tag $env:RELEASE_TAG -Channel $env:RELEASE_CHANNEL
+      - name: Build signed one-time repair and verify real installed baselines
+        if: inputs.tag == 'v0.0.10-beta.2'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
+        run: |
+          php scripts/build-update-repair.php release-assets
+          if ($LASTEXITCODE) { throw 'Repair tool signing failed.' }
+          $env:UPDATE_PRIVATE_KEY = ''
+          ./scripts/verify-signed-update-repair.ps1 -Assets release-assets
+          if ($LASTEXITCODE) { throw 'Signed repair acceptance failed.' }
       - uses: actions/upload-artifact@v4
         with:
           name: signed-delta
