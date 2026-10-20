@@ -122,7 +122,8 @@ jobs:
           PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
         run: |
           set -euo pipefail
-          flags=(--latest=false)
-          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          flags=(--latest)
+          if [ "$PRERELEASE" = "true" ]; then flags=(--prerelease --latest=false); fi
           mv release-assets/release-notes.md release-notes.md
           gh release create "$RELEASE_TAG" release-assets/* --repo "$REPOSITORY" --title "POS Desktop $RELEASE_TAG" --notes-file release-notes.md "${flags[@]}"
+
