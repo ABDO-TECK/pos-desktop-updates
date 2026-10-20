@@ -1,0 +1,17 @@
+name: Migrate published signed assets
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/migrate-releases.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
