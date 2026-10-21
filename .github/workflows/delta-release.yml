@@ -80,6 +80,10 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           php scripts/verify-asset-download.php
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          php scripts/verify-fleet-history.php
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/verify-rollback-flow.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node scripts/verify-duplicate-release-entries.mjs
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           php scripts/verify-delta-download-failure.php
@@ -120,6 +124,19 @@ jobs:
           $env:UPDATE_PRIVATE_KEY = ''
           ./scripts/verify-signed-update-repair.ps1 -Assets release-assets
           if ($LASTEXITCODE) { throw 'Signed repair acceptance failed.' }
+      - name: Verify update and rollback through the real original Setup UI
+        if: inputs.tag == 'v0.0.10-beta.3'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/prepare-rollback-ui.ps1
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.tag == 'v0.0.10-beta.3'
+        with:
+          name: rollback-ui-evidence
+          path: ${{ runner.temp }}/rollback-ui-evidence
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: signed-delta
