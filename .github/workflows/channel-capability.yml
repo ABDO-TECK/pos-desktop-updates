@@ -1,0 +1,53 @@
+name: Isolated channel transition capability
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Source commit containing the capability probe
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  capability:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ABDO-TECK/pos-desktop
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, pdo_sqlite, mysqli, gd, mbstring, zip, openssl, phar
+          coverage: none
+      - name: Prepare test dependencies and already published signed beta
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm ci
+          if ($LASTEXITCODE) { throw 'Node dependencies failed.' }
+          composer install --working-dir=backend --no-dev --no-interaction --prefer-dist --no-progress
+          if ($LASTEXITCODE) { throw 'PHP dependencies failed.' }
+          New-Item -ItemType Directory -Path release-assets | Out-Null
+          gh release download v0.0.10-beta.4 --repo ABDO-TECK/pos-desktop-updates --pattern 'manifest-0.0.10-beta.3.*' --pattern 'delta-0.0.10-beta.3-to-0.0.10-beta.4.zip' --dir release-assets
+          if ($LASTEXITCODE) { throw 'Published signed baseline download failed.' }
+      - name: Prove unchanged Setup shell, observer and SQL preservation
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/prepare-rollback-ui.ps1 -Capability
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: channel-capability-evidence
+          path: ${{ runner.temp }}/rollback-ui-evidence
+          if-no-files-found: ignore
+          retention-days: 14
