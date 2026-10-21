@@ -106,6 +106,31 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node scripts/verify-delta-flow.mjs
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Verify channel transition policy, signatures and service boundaries
+        if: inputs.tag == 'v0.0.10-beta.5'
+        shell: pwsh
+        run: |
+          php scripts/verify-active-channels.php
+          if ($LASTEXITCODE) { throw 'Active channel verification failed.' }
+          php scripts/verify-transition-catalog.php
+          if ($LASTEXITCODE) { throw 'Transition catalog verification failed.' }
+          php scripts/verify-transition-manifest.php
+          if ($LASTEXITCODE) { throw 'Transition authority verification failed.' }
+          node scripts/verify-channel-transition-flow.mjs
+          if ($LASTEXITCODE) { throw 'Transition service verification failed.' }
+          node scripts/verify-transition-publication.mjs
+          if ($LASTEXITCODE) { throw 'Transition publication policy failed.' }
+      - name: Prepare an ephemeral local candidate tag for validation only
+        if: inputs.tag == 'v0.0.10-beta.5' && !inputs.publish
+        shell: pwsh
+        env:
+          CANDIDATE_TAG: ${{ inputs.tag }}
+        run: |
+          git rev-parse --verify "refs/tags/$env:CANDIDATE_TAG" 2>$null
+          if ($LASTEXITCODE) {
+            git tag $env:CANDIDATE_TAG HEAD
+            if ($LASTEXITCODE) { throw 'Cannot mark detached validation candidate.' }
+          }
       - name: Generate and verify signed packages for every supported baseline
         shell: pwsh
         env:
@@ -114,6 +139,42 @@ jobs:
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
           RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
         run: ./scripts/build-delta-release.ps1 -Tag $env:RELEASE_TAG -Channel $env:RELEASE_CHANNEL
+      - name: Measure data compatibility using the original Setup on an isolated runner
+        if: inputs.tag == 'v0.0.10-beta.5'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/prepare-channel-transition-ui.ps1 -Phase contract
+      - name: Sign changed-only and complete return bundles carried on beta
+        if: inputs.tag == 'v0.0.10-beta.5'
+        shell: pwsh
+        env:
+          UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
+        run: |
+          $lab=Join-Path $env:RUNNER_TEMP 'channel-transition-ui-lab'
+          php scripts/build-channel-transition.php "--target-root=$lab/app/resources/app.asar.unpacked" "--shell-root=$lab/app" "--target-inventory=$lab/deployment-inventory.json" "--contract=$lab/data-contract.json" --output=release-assets
+          if ($LASTEXITCODE) { throw 'Transition signing or byte verification failed.' }
+      - name: Verify both channel directions and delta/full return through the real Setup UI
+        if: inputs.tag == 'v0.0.10-beta.5'
+        shell: pwsh
+        run: |
+          ./scripts/prepare-channel-transition-ui.ps1 -Phase acceptance
+          if ($LASTEXITCODE) { throw 'Actual channel UI acceptance failed.' }
+          Copy-Item -LiteralPath "$env:RUNNER_TEMP/channel-transition-ui-evidence/acceptance.json" -Destination 'release-assets/channel-transition-acceptance.json'
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.tag == 'v0.0.10-beta.5'
+        with:
+          name: channel-transition-ui-evidence
+          path: ${{ runner.temp }}/channel-transition-ui-evidence
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure() && inputs.tag == 'v0.0.10-beta.5'
+        with:
+          name: channel-transition-debug-packages
+          path: release-assets/*
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Build signed one-time repair and verify real installed baselines
         if: inputs.tag == 'v0.0.10-beta.2'
         shell: pwsh
