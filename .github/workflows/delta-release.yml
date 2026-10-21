@@ -59,7 +59,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: pdo_mysql, mysqli, gd, mbstring, dom, xml, xmlwriter, zip, openssl, phar, sqlite3
+          extensions: pdo_mysql, pdo_sqlite, mysqli, gd, mbstring, dom, xml, xmlwriter, zip, openssl, phar, sqlite3
           coverage: none
       - name: Build and verify application artifacts
         shell: pwsh
