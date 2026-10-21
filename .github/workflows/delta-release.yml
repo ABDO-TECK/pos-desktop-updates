@@ -126,12 +126,24 @@ jobs:
           $env:UPDATE_PRIVATE_KEY = ''
           ./scripts/verify-signed-update-repair.ps1 -Assets release-assets
           if ($LASTEXITCODE) { throw 'Signed repair acceptance failed.' }
+      - name: Checkout acceptance-only rendered-control wait correction
+        if: inputs.tag == 'v0.0.10-beta.4'
+        uses: actions/checkout@v4
+        with:
+          repository: ABDO-TECK/pos-desktop
+          ref: a00dd84dda56ef50d0bd9880cd0eb24802c88ed7
+          path: rollback-acceptance-source
+          persist-credentials: false
+          sparse-checkout: scripts/verify-rollback-ui.mjs
+          sparse-checkout-cone-mode: false
       - name: Verify update and rollback through the real original Setup UI
         if: inputs.tag == 'v0.0.10-beta.4'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./scripts/prepare-rollback-ui.ps1
+        run: |
+          Copy-Item -LiteralPath 'rollback-acceptance-source/scripts/verify-rollback-ui.mjs' -Destination 'scripts/verify-rollback-ui.mjs'
+          ./scripts/prepare-rollback-ui.ps1
       - uses: actions/upload-artifact@v4
         if: always() && inputs.tag == 'v0.0.10-beta.4'
         with:
