@@ -122,6 +122,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Transition API protection failed.' }
           node scripts/verify-transition-receipt-http.mjs
           if ($LASTEXITCODE) { throw 'Independent production receipt failed.' }
+          php scripts/verify-transition-metadata-restore.php
+          if ($LASTEXITCODE) { throw 'Restored metadata regression failed.' }
+          node scripts/verify-transition-ui.mjs
+          if ($LASTEXITCODE) { throw 'React channel preview/wait regression failed.' }
           node scripts/verify-transition-publication.mjs
           if ($LASTEXITCODE) { throw 'Transition publication policy failed.' }
       - name: Prepare an ephemeral local candidate tag for validation only
