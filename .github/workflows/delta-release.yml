@@ -118,6 +118,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'Transition authority verification failed.' }
           node scripts/verify-channel-transition-flow.mjs
           if ($LASTEXITCODE) { throw 'Transition service verification failed.' }
+          php scripts/verify-transition-api.php
+          if ($LASTEXITCODE) { throw 'Transition API protection failed.' }
           node scripts/verify-transition-publication.mjs
           if ($LASTEXITCODE) { throw 'Transition publication policy failed.' }
       - name: Prepare an ephemeral local candidate tag for validation only
