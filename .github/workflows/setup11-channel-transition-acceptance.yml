@@ -14,7 +14,7 @@
 #   against Setup 11's frozen public key, route only the bound job status through Candidate 12,
 #   and click the original UI resume button before standard transitions continue.
 # - It NEVER publishes releases, tags, blockmaps, or assets to any GitHub Release.
-# - The supervisor pins c498f21a639040dc377638199dc983165373e10f to the exact reviewed 40-hex commit SHA before running.
+# - The supervisor pins ca5a06d7607ee871665556be466671ced63b4204 to the exact reviewed 40-hex commit SHA before running.
 
 name: Setup 0.0.11 Channel Transition Acceptance
 
@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: c498f21a639040dc377638199dc983165373e10f
+          ref: ca5a06d7607ee871665556be466671ced63b4204
           persist-credentials: false
           fetch-depth: 0
 
