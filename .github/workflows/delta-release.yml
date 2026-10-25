@@ -3,7 +3,7 @@ name: Signed delta release
 # Safe release workflow template for Beta 0.0.12-beta.1.
 # Parent installs this template as .github/workflows/delta-release.yml on a new
 # updates release branch based on main (commit f67c564a8ec24dbe2fe522d622dad13437c376a3).
-# The literal placeholder 21365dc05c7801f8a114c38c797939843be4a264 is replaced by the parent with the 40-hex commit SHA.
+# The literal placeholder 6a3f9fde5ea9ee598819415e6645d6c6ee7795eb is replaced by the parent with the 40-hex commit SHA.
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: 21365dc05c7801f8a114c38c797939843be4a264
+          ref: 6a3f9fde5ea9ee598819415e6645d6c6ee7795eb
           persist-credentials: false
           fetch-depth: 0
 
@@ -221,7 +221,7 @@ jobs:
               target_version = '0.0.12-beta.1'
               channel = 'beta'
               source_repository = 'ABDO-TECK/pos-desktop'
-              source_commit = '21365dc05c7801f8a114c38c797939843be4a264'
+              source_commit = '6a3f9fde5ea9ee598819415e6645d6c6ee7795eb'
               supported_baselines = @('v0.0.11')
               native_shell_version = '0.0.11'
               native_shell_commit = 'aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7'
@@ -428,7 +428,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: 21365dc05c7801f8a114c38c797939843be4a264
+          ref: 6a3f9fde5ea9ee598819415e6645d6c6ee7795eb
           persist-credentials: false
           fetch-depth: 0
 
@@ -601,7 +601,7 @@ jobs:
               'Native Runtime Shell: 0.0.11 (aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7)',
               'Source Repository: ABDO-TECK/pos-desktop',
               'Source Tag: v0.0.12-beta.1',
-              'Source Commit: 21365dc05c7801f8a114c38c797939843be4a264',
+              'Source Commit: 6a3f9fde5ea9ee598819415e6645d6c6ee7795eb',
               "Updates Workflow Commit: $env:WORKFLOW_SHA",
               '',
               '## Summary of Changes',
