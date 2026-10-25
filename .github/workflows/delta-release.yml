@@ -3,7 +3,7 @@ name: Signed delta release
 # Safe release workflow template for Beta 0.0.12-beta.1.
 # Parent installs this template as .github/workflows/delta-release.yml on a new
 # updates release branch based on main (commit f67c564a8ec24dbe2fe522d622dad13437c376a3).
-# The literal placeholder 94f07e5e337c0c097bdd98b169294414d8d1471e is replaced by the parent with the 40-hex commit SHA.
+# The literal placeholder 8d4fdce97099f51c3d9254e6d40051185b7e7473 is replaced by the parent with the 40-hex commit SHA.
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: 94f07e5e337c0c097bdd98b169294414d8d1471e
+          ref: 8d4fdce97099f51c3d9254e6d40051185b7e7473
           persist-credentials: false
           fetch-depth: 0
 
@@ -199,11 +199,11 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
           Write-Host "Building forward channel transition carrier: Setup 11 -> Beta 12..."
-          php scripts/build-channel-transition.php --target-root="$lab/candidate-app" --shell-root="$lab/app" --target-inventory="release-assets/deployment-inventory.json" --source-root=. --source-inventory="$lab/setup11-inventory.json" --carrier-tag=v0.0.12-beta.1 --target-repo=pos-desktop-updates --target-tag=v0.0.12-beta.1 --contract="$lab/data-contract.json" --output=release-assets
+          php scripts/build-channel-transition.php --target-root="$lab/candidate-app" --shell-root="$lab/app" --target-inventory="release-assets/deployment-inventory.json" --source-root="$lab/app/resources/app.asar.unpacked" --source-inventory="$lab/setup11-inventory.json" --carrier-tag=v0.0.12-beta.1 --target-repo=pos-desktop-updates --target-tag=v0.0.12-beta.1 --contract="$lab/data-contract.json" --output=release-assets
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
           Write-Host "Appending reverse channel transition carrier: Beta 12 -> Setup 11..."
-          php scripts/build-channel-transition.php --append --target-root="$lab/app/resources/app.asar.unpacked" --shell-root="$lab/app" --target-inventory="$lab/setup11-inventory.json" --source-root=. --source-inventory="release-assets/deployment-inventory.json" --carrier-tag=v0.0.12-beta.1 --target-repo=pos-desktop --target-tag=v0.0.11 --contract="$lab/data-contract.json" --output=release-assets
+          php scripts/build-channel-transition.php --append --target-root="$lab/app/resources/app.asar.unpacked" --shell-root="$lab/app" --target-inventory="$lab/setup11-inventory.json" --source-root="$lab/candidate-app" --source-inventory="release-assets/deployment-inventory.json" --carrier-tag=v0.0.12-beta.1 --target-repo=pos-desktop --target-tag=v0.0.11 --contract="$lab/data-contract.json" --output=release-assets
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Phase 5 - Execute Signed Beta Repair and Transition Acceptance
@@ -221,7 +221,7 @@ jobs:
               target_version = '0.0.12-beta.1'
               channel = 'beta'
               source_repository = 'ABDO-TECK/pos-desktop'
-              source_commit = '94f07e5e337c0c097bdd98b169294414d8d1471e'
+              source_commit = '8d4fdce97099f51c3d9254e6d40051185b7e7473'
               supported_baselines = @('v0.0.11')
               native_shell_version = '0.0.11'
               native_shell_commit = 'aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7'
@@ -428,7 +428,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: 94f07e5e337c0c097bdd98b169294414d8d1471e
+          ref: 8d4fdce97099f51c3d9254e6d40051185b7e7473
           persist-credentials: false
           fetch-depth: 0
 
@@ -601,7 +601,7 @@ jobs:
               'Native Runtime Shell: 0.0.11 (aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7)',
               'Source Repository: ABDO-TECK/pos-desktop',
               'Source Tag: v0.0.12-beta.1',
-              'Source Commit: 94f07e5e337c0c097bdd98b169294414d8d1471e',
+              'Source Commit: 8d4fdce97099f51c3d9254e6d40051185b7e7473',
               "Updates Workflow Commit: $env:WORKFLOW_SHA",
               '',
               '## Summary of Changes',
