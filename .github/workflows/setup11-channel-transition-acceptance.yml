@@ -8,8 +8,13 @@
 # - It performs live CI acceptance on an ephemeral Windows runner using the real Setup 0.0.11
 #   runtime and production RSA signing key (UPDATE_PRIVATE_KEY) to prove bidirectional channel
 #   transition integrity.
+# - Setup 0.0.11 initial queued bootstrap update encounters the established frozen blocker
+#   (missing result.ok on completed queued apply job). The acceptance phase explicitly utilizes
+#   Supervisor Repair Bootstrap (-AllowRepairBootstrap) to verify candidate 0.0.12 PHAR trust
+#   against Setup 11's frozen public key, route only the bound job status through Candidate 12,
+#   and click the original UI resume button before standard transitions continue.
 # - It NEVER publishes releases, tags, blockmaps, or assets to any GitHub Release.
-# - The supervisor pins f5ebcbf3264b626a94a664633620f412c26f8370 to the exact reviewed 40-hex commit SHA before running.
+# - The supervisor pins 892001c76df99f3f4bc99633b563dcbbe51f10bb to the exact reviewed 40-hex commit SHA before running.
 
 name: Setup 0.0.11 Channel Transition Acceptance
 
@@ -36,7 +41,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: f5ebcbf3264b626a94a664633620f412c26f8370
+          ref: 892001c76df99f3f4bc99633b563dcbbe51f10bb
           persist-credentials: false
           fetch-depth: 0
 
@@ -118,10 +123,10 @@ jobs:
           pwsh scripts/prepare-setup11-channel-transition.ps1 -Phase sign
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: Phase 3 - Execute Multi-Step Setup 0.0.11 Channel Transition Acceptance
+      - name: Phase 3 - Execute Multi-Step Setup 0.0.11 Channel Transition Acceptance (Supervisor Repair Bootstrap)
         shell: pwsh
         run: |
-          pwsh scripts/prepare-setup11-channel-transition.ps1 -Phase acceptance
+          pwsh scripts/prepare-setup11-channel-transition.ps1 -Phase acceptance -AllowRepairBootstrap
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Upload Transition Acceptance Evidence
