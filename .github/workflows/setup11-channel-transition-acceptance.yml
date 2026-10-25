@@ -9,7 +9,7 @@
 #   runtime and production RSA signing key (UPDATE_PRIVATE_KEY) to prove bidirectional channel
 #   transition integrity.
 # - It NEVER publishes releases, tags, blockmaps, or assets to any GitHub Release.
-# - The supervisor pins 7b99fda2698b7aab080e4594b1ec75f7ab4ec30f to the exact reviewed 40-hex commit SHA before running.
+# - The supervisor pins f5ebcbf3264b626a94a664633620f412c26f8370 to the exact reviewed 40-hex commit SHA before running.
 
 name: Setup 0.0.11 Channel Transition Acceptance
 
@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: 7b99fda2698b7aab080e4594b1ec75f7ab4ec30f
+          ref: f5ebcbf3264b626a94a664633620f412c26f8370
           persist-credentials: false
           fetch-depth: 0
 
