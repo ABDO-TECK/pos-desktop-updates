@@ -3,7 +3,7 @@ name: Signed stable delta release
 # Safe release workflow template for Stable 0.0.12.
 # Parent installs this template as .github/workflows/delta-release.yml on a new
 # updates release branch based on main.
-# The literal placeholder cb87757b8a54c2bfe9d86c9a45eb2a100394b254 is replaced by the parent with the 40-hex commit SHA.
+# The literal placeholder ba532f012c97637f23f53301223c9259b31f3a9b is replaced by the parent with the 40-hex commit SHA.
 
 on:
   workflow_dispatch:
@@ -31,9 +31,33 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: cb87757b8a54c2bfe9d86c9a45eb2a100394b254
+          ref: ba532f012c97637f23f53301223c9259b31f3a9b
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Fetch required delta baseline refs
+        shell: pwsh
+        run: |
+          $fetchOutput = & git fetch --no-tags origin refs/tags/v0.0.11:refs/tags/v0.0.11 refs/tags/v0.0.12-beta.1:refs/tags/v0.0.12-beta.1 2>&1
+          if ($LASTEXITCODE -ne 0) {
+              throw "Failed fetching required baseline refs (v0.0.11, v0.0.12-beta.1) from origin: $($fetchOutput | Out-String)"
+          }
+          $v11Commit = (git rev-parse --verify 'refs/tags/v0.0.11^{commit}' 2>&1).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $v11Commit) {
+              throw "Baseline ref v0.0.11 failed to resolve: $v11Commit"
+          }
+          if ($v11Commit -ne 'aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7') {
+              throw "Baseline ref v0.0.11 commit mismatch: expected aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7, got $v11Commit"
+          }
+          $vBetaCommit = (git rev-parse --verify 'refs/tags/v0.0.12-beta.1^{commit}' 2>&1).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $vBetaCommit) {
+              throw "Baseline ref v0.0.12-beta.1 failed to resolve: $vBetaCommit"
+          }
+          if ($vBetaCommit -ne '9124ce7e2a338662611c11d903c12b99d6168999') {
+              throw "Baseline ref v0.0.12-beta.1 commit mismatch: expected 9124ce7e2a338662611c11d903c12b99d6168999, got $vBetaCommit"
+          }
+          Write-Host "Baseline refs verified: v0.0.11 ($v11Commit), v0.0.12-beta.1 ($vBetaCommit)"
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -120,52 +144,72 @@ jobs:
         env:
           IS_PUBLISH: ${{ inputs.publish }}
           SOURCE_REPO: ABDO-TECK/pos-desktop
-          EXPECTED_TAG: v0.0.12
+          BUILD_TAG: v0.0.12
+          SOURCE_REF: refs/tags/delta-source-v0.0.12
+          PINNED_COMMIT: ba532f012c97637f23f53301223c9259b31f3a9b
         run: |
-          $headSha = (git rev-parse HEAD).Trim()
+          $headSha = (git rev-parse HEAD 2>&1).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $headSha) {
+              throw "Failed to resolve checkout HEAD SHA: $headSha"
+          }
           Write-Host "Local checkout HEAD SHA: $headSha"
 
-          if ($env:IS_PUBLISH -eq 'true') {
-              Write-Host "Publish requested: Verifying source remote tag $env:EXPECTED_TAG exists in $env:SOURCE_REPO..."
-              $remoteTagLine = (git ls-remote --tags "https://github.com/$env:SOURCE_REPO.git" "refs/tags/$env:EXPECTED_TAG" 2>&1)
-              if ($LASTEXITCODE -ne 0 -or -not $remoteTagLine -or $remoteTagLine -notmatch '^([0-9a-f]{40})\s+refs/tags/') {
-                  throw "Publish rejected: Source remote tag $env:EXPECTED_TAG does not exist on $env:SOURCE_REPO or query failed! Parent must create real source tag after review."
-              }
-              $remoteTagSha = $Matches[1]
-              $derefLine = (git ls-remote --tags "https://github.com/$env:SOURCE_REPO.git" "refs/tags/$env:EXPECTED_TAG^{}" 2>&1)
-              if ($LASTEXITCODE -ne 0) {
-                  throw "Publish rejected: Failed querying dereferenced source remote tag on $env:SOURCE_REPO: $derefLine"
-              }
-              if ($derefLine -match '^([0-9a-f]{40})\s+refs/tags/') {
-                  $remoteTagSha = $Matches[1]
-              }
-              if ($remoteTagSha -ne $headSha) {
-                  throw "Publish rejected: Remote tag $env:EXPECTED_TAG resolves to $remoteTagSha, which does not match exact pinned checkout commit $headSha!"
-              }
-              $localExisting = (git rev-parse --verify "refs/tags/$env:EXPECTED_TAG^{commit}" 2>&1)
-              if ($LASTEXITCODE -eq 0) {
-                  $localSha = ($localExisting | Out-String).Trim()
-                  if ($localSha -ne $headSha) {
-                      throw "Publish rejected: Local clone tag $env:EXPECTED_TAG points to $localSha, but checkout HEAD is $headSha!"
-                  }
-              } else {
-                  git tag $env:EXPECTED_TAG $headSha
-              }
-              Write-Host "Remote tag $env:EXPECTED_TAG verified and matches checkout HEAD $headSha."
-          } else {
-              Write-Host "Validation run (publish=false): Binding local clone tag $env:EXPECTED_TAG if absent..."
-              $existingLocal = (git rev-parse --verify "refs/tags/$env:EXPECTED_TAG^{commit}" 2>&1)
-              if ($LASTEXITCODE -eq 0) {
-                  $localSha = ($existingLocal | Out-String).Trim()
-                  if ($localSha -ne $headSha) {
-                      throw "Validation rejected: Existing local tag $env:EXPECTED_TAG points to $localSha, which does not equal exact checkout SHA $headSha!"
-                  }
-                  Write-Host "Local tag $env:EXPECTED_TAG verified at exact checkout SHA $headSha."
-              } else {
-                  git tag $env:EXPECTED_TAG $headSha
-                  Write-Host "Created ephemeral local tag $env:EXPECTED_TAG at $headSha for build validators (will not push)."
+          if ($headSha -ne $env:PINNED_COMMIT) {
+              throw "Checked-out commit $headSha does not match pinned Delta commit $env:PINNED_COMMIT!"
+          }
+
+          Write-Host "Querying source remote reference $env:SOURCE_REF on $env:SOURCE_REPO..."
+          $remoteQuery = & git ls-remote --tags "https://github.com/$env:SOURCE_REPO.git" $env:SOURCE_REF "$env:SOURCE_REF^{}" 2>&1
+          if ($LASTEXITCODE -ne 0) {
+              $errStr = ($remoteQuery | Out-String).Trim()
+              throw "Failed querying source remote reference $env:SOURCE_REF on $env:SOURCE_REPO: $errStr"
+          }
+
+          $directSha = $null
+          $peeledSha = $null
+          foreach ($line in ($remoteQuery -split "`r?`n")) {
+              $trimmed = $line.Trim()
+              if ($trimmed -match '^([0-9a-f]{40})\s+' + [regex]::Escape($env:SOURCE_REF) + '\^{}$') {
+                  $peeledSha = $Matches[1]
+              } elseif ($trimmed -match '^([0-9a-f]{40})\s+' + [regex]::Escape($env:SOURCE_REF) + '$') {
+                  $directSha = $Matches[1]
               }
           }
+          $resolvedRemoteSourceSha = if ($peeledSha) { $peeledSha } else { $directSha }
+
+          if ($resolvedRemoteSourceSha) {
+              if ($resolvedRemoteSourceSha -ne $headSha) {
+                  throw "Remote source reference $env:SOURCE_REF resolves to $resolvedRemoteSourceSha, which does not match exact pinned checkout commit $headSha!"
+              }
+              Write-Host "Remote source reference $env:SOURCE_REF verified pointing to checkout HEAD ($headSha)."
+          } else {
+              if ($env:IS_PUBLISH -eq 'true') {
+                  throw "Publish rejected: Source remote reference $env:SOURCE_REF does not exist on $env:SOURCE_REPO! Supervisor must create immutable source reference before publication."
+              }
+              Write-Host "Validation run (publish=false): Source remote reference $env:SOURCE_REF is absent as expected prior to supervisor creation."
+          }
+
+          Write-Host "Binding ephemeral local build alias $env:BUILD_TAG..."
+          $localExisting = (git rev-parse --verify "refs/tags/$env:BUILD_TAG^{commit}" 2>&1)
+          if ($LASTEXITCODE -eq 0) {
+              $localSha = ($localExisting | Out-String).Trim()
+              if ($localSha -ne $headSha) {
+                  throw "Validation rejected: Existing local tag $env:BUILD_TAG points to $localSha, which does not equal exact checkout SHA $headSha! Overwrite is prohibited."
+              }
+              Write-Host "Existing local build alias $env:BUILD_TAG verified at exact checkout SHA $headSha."
+          } else {
+              git tag $env:BUILD_TAG $headSha
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Failed to create ephemeral local build alias $env:BUILD_TAG at $headSha"
+              }
+              Write-Host "Created ephemeral local build alias $env:BUILD_TAG at $headSha for build validators (will not push)."
+          }
+
+          $verifiedAliasSha = (git rev-parse --verify "refs/tags/$env:BUILD_TAG^{commit}" 2>&1).Trim()
+          if ($LASTEXITCODE -ne 0 -or $verifiedAliasSha -ne $headSha) {
+              throw "Failclosed: Ephemeral local build alias $env:BUILD_TAG ($verifiedAliasSha) does not match checkout HEAD ($headSha)!"
+          }
+          Write-Host "Verified ephemeral clone-only validation alias $env:BUILD_TAG == HEAD ($headSha); this alias is never pushed."
 
       - name: Phase 1 - Prepare Lab and Capture Baseline Setup 0.0.11 Contract
         shell: pwsh
@@ -190,10 +234,11 @@ jobs:
           # Record explicit release provenance with ToUniversalTime conversion
           $provenance = [ordered]@{
               release_tag = 'v0.0.12'
+              source_reference = 'refs/tags/delta-source-v0.0.12'
               target_version = '0.0.12'
               channel = 'stable'
               source_repository = 'ABDO-TECK/pos-desktop'
-              source_commit = 'cb87757b8a54c2bfe9d86c9a45eb2a100394b254'
+              source_commit = 'ba532f012c97637f23f53301223c9259b31f3a9b'
               supported_baselines = @('v0.0.11', 'v0.0.12-beta.1')
               native_shell_version = '0.0.11'
               native_shell_commit = 'aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7'
@@ -339,9 +384,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: cb87757b8a54c2bfe9d86c9a45eb2a100394b254
+          ref: ba532f012c97637f23f53301223c9259b31f3a9b
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
+          fetch-tags: false
 
       - name: Setup PHP 8.3
         uses: shivammathur/setup-php@v2
@@ -482,13 +528,14 @@ jobs:
               '# POS Desktop 0.0.12',
               '',
               'Target Application Version: 0.0.12',
+              'Release Tag: v0.0.12',
               'Update Channel: stable',
               'Release Type: delta',
               'Supported Baselines: v0.0.11 (Windows Setup 0.0.11), v0.0.12-beta.1 (Beta 0.0.12-beta.1)',
               'Native Runtime Shell: 0.0.11 (aa14fce3dc5c0ec15b3a38c8ae83010430a50cf7)',
               'Source Repository: ABDO-TECK/pos-desktop',
-              'Source Tag: v0.0.12',
-              'Source Commit: cb87757b8a54c2bfe9d86c9a45eb2a100394b254',
+              'Source Reference: refs/tags/delta-source-v0.0.12',
+              'Source Commit: ba532f012c97637f23f53301223c9259b31f3a9b',
               "Updates Workflow Commit: $env:WORKFLOW_SHA",
               '',
               '## Summary of Changes',
