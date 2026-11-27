@@ -10,11 +10,11 @@ on:
         required: true
         default: v0.0.15-beta.1
       publish:
-        description: Publish the already verified artifact from a stage run
+        description: Verify the already published beta against its accepted stage
         type: boolean
         default: false
       stage_run_id:
-        description: Successful stage run ID for publish mode
+        description: Successful stage run ID for public verification
         required: false
 
 permissions:
@@ -145,14 +145,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  publish:
+  verify-public:
+    name: Verify public beta release bytes
     needs: guard
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    permissions:
-      contents: write
-      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -167,11 +165,11 @@ jobs:
           run-id: ${{ inputs.stage_run_id }}
           github-token: ${{ github.token }}
           path: release-assets
-      - name: Publish the exact accepted beta and verify every public asset
+      - name: Verify each public beta asset against the accepted stage
         env:
           GH_TOKEN: ${{ github.token }}
           STAGE_RUN_ID: ${{ inputs.stage_run_id }}
-        run: node scripts/verify-beta15-release.mjs publish release-assets "$STAGE_RUN_ID" public-assets
+        run: node scripts/verify-beta15-release.mjs public release-assets "$STAGE_RUN_ID" public-assets
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: beta15-public-checksums
@@ -181,7 +179,7 @@ jobs:
 
   live:
     name: Verify the real public beta in Setup 0.0.14
-    needs: publish
+    needs: verify-public
     runs-on: windows-latest
     timeout-minutes: 45
     defaults:
@@ -192,7 +190,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: ABDO-TECK/pos-desktop
-          ref: ${{ inputs.source_ref }}
+          ref: fd0402630d571be40746a94be8fb3558eb6c2005
           path: source
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

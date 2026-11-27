@@ -9,8 +9,7 @@ const sourceRepository = 'ABDO-TECK/pos-desktop';
 const tag = 'v0.0.15-beta.1';
 const baseline = '0.0.14';
 const target = tag.slice(1);
-const draftId = 460797291;
-const draftSlug = 'untagged-93051d264b68e8b62845';
+const releaseId = 460797291;
 const checksumName = 'SHA256SUMS.txt';
 const notesName = 'release-notes.md';
 const transitionStems = [
@@ -28,13 +27,13 @@ const required = [
 ].sort();
 
 const [, , mode, assetsDirectory, stageRunId, downloadsDirectory] = process.argv;
-assert(['freeze', 'verify', 'publish'].includes(mode) && assetsDirectory && /^[0-9]+$/.test(stageRunId ?? ''));
+assert(['freeze', 'verify', 'public'].includes(mode) && assetsDirectory && /^[0-9]+$/.test(stageRunId ?? ''));
 assert.equal(process.env.GITHUB_ACTIONS, 'true');
 assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.match(process.env.SOURCE_SHA ?? '', /^[a-f0-9]{40}$/);
 assert.match(process.env.GITHUB_SHA ?? '', /^[a-f0-9]{40}$/);
 
-const producerSha = mode === 'publish' ? process.env.STAGED_WORKFLOW_SHA : process.env.GITHUB_SHA;
+const producerSha = mode === 'public' ? process.env.STAGED_WORKFLOW_SHA : process.env.GITHUB_SHA;
 assert.match(producerSha ?? '', /^[a-f0-9]{40}$/);
 
 const read = (name, root = assetsDirectory) => readFileSync(path.join(root, name));
@@ -106,13 +105,6 @@ function api(resource) {
   return JSON.parse(gh(['api', resource]));
 }
 
-function betaRelease() {
-  const releases = api('repos/' + repository + '/releases?per_page=100');
-  assert(releases.length < 100, 'Release enumeration exceeded the expected bound.');
-  const matches = releases.filter(release => release.tag_name === tag);
-  assert(matches.length <= 1, 'The beta tag has multiple release records.');
-  return matches[0];
-}
 
 function betaTag() {
   const refs = api('repos/' + repository + '/git/matching-refs/tags/' + tag);
@@ -129,14 +121,13 @@ function verifyStablePointers() {
   }
 }
 
-function verifyRelease(release, isDraft) {
-  assert.equal(release.draft, isDraft);
+function verifyRelease(release) {
+  assert.equal(release.draft, false);
   assert.equal(release.prerelease, true);
   assert.equal(release.tag_name, tag);
-  assert.equal(release.id, draftId);
+  assert.equal(release.id, releaseId);
   assert.equal(release.target_commitish, producerSha);
-  const releaseSlug = isDraft ? draftSlug : tag;
-  assert.equal(release.html_url, 'https://github.com/' + repository + '/releases/tag/' + releaseSlug);
+  assert.equal(release.html_url, 'https://github.com/' + repository + '/releases/tag/' + tag);
   assert.equal(release.body.trimEnd(), read(notesName).toString().trimEnd());
   const seen = new Set();
   for (const asset of release.assets) {
@@ -145,31 +136,19 @@ function verifyRelease(release, isDraft) {
     assert.equal(asset.state, 'uploaded');
     assert.equal(asset.digest, 'sha256:' + hashes.get(asset.name), 'Different staged bytes: ' + asset.name);
     assert.equal(asset.size, read(asset.name).length);
-    assert.equal(asset.browser_download_url, 'https://github.com/' + repository + '/releases/download/' + releaseSlug + '/' + asset.name);
+    assert.equal(asset.browser_download_url, 'https://github.com/' + repository + '/releases/download/' + tag + '/' + asset.name);
     seen.add(asset.name);
   }
   return seen;
 }
 
 verifyStablePointers();
-let release = betaRelease();
-assert.equal(release?.id, draftId, 'The approved beta draft does not exist.');
-const tagObject = {
+const release = api('repos/' + repository + '/releases/' + releaseId);
+assert.equal(verifyRelease(release).size, names.length);
+assert.deepEqual(betaTag(), {
   type: 'commit', sha: producerSha,
   url: 'https://api.github.com/repos/' + repository + '/git/commits/' + producerSha,
-};
-const preexistingTag = betaTag();
-if (preexistingTag) assert.deepEqual(preexistingTag, tagObject);
-assert.equal(verifyRelease(release, release.draft).size, names.length);
-
-const releaseEndpoint = 'repos/' + repository + '/releases/' + draftId;
-if (release.draft) {
-  verifyStablePointers();
-  gh(['api', '--method', 'PATCH', releaseEndpoint, '-F', 'draft=false', '-F', 'prerelease=true', '-f', 'make_latest=false']);
-}
-release = api(releaseEndpoint);
-assert.equal(verifyRelease(release, false).size, names.length);
-assert.deepEqual(betaTag(), tagObject);
+});
 verifyStablePointers();
 
 mkdirSync(downloadsDirectory);
