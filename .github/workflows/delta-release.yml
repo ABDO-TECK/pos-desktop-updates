@@ -28,6 +28,7 @@ concurrency:
 env:
   SOURCE_SHA: ${{ inputs.source_ref }}
   BETA_TAG: ${{ inputs.tag }}
+  STAGED_WORKFLOW_SHA: 584e568ee082ecb48c4d89d7464424e9e9366241
 
 jobs:
   guard:
@@ -45,14 +46,19 @@ jobs:
           [[ "$BETA_TAG" == 'v0.0.15-beta.1' ]]
           [[ "$SOURCE_SHA" == '1cade27190cc7ed81456a86a174fc6f35f46ae62' ]]
           if [[ "$PUBLISH" == true ]]; then
-            [[ "$STAGE_RUN_ID" =~ ^[0-9]+$ ]]
+            [[ "$STAGE_RUN_ID" == 45983874931 ]]
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGE_RUN_ID" |
-              jq -e --arg sha "$GITHUB_SHA" \
+              jq -e --arg sha "$STAGED_WORKFLOW_SHA" \
                 '.path == ".github/workflows/delta-release.yml" and .head_branch == "codex/beta-0.0.15-release" and
                  .head_sha == $sha and .event == "workflow_dispatch" and .conclusion == "success" and
                  .head_repository.full_name == "ABDO-TECK/pos-desktop-updates"'
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGE_RUN_ID/jobs" |
               jq -e '[.jobs[] | select(.name == "Build, sign, and verify on Windows" and .conclusion == "success")] | length == 1'
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/15190857768" |
+              jq -e --arg sha "$STAGED_WORKFLOW_SHA" \
+                '.name == "beta15-signed-release" and .workflow_run.id == 45983874931 and
+                 .workflow_run.head_sha == $sha and .expired == false and
+                 .digest == "sha256:a4fc05988d1143e2d99754c660a075daec291b94452c6ce4908b12138d2b0e76"'
           else
             [[ -z "$STAGE_RUN_ID" ]]
           fi

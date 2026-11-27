@@ -9,6 +9,8 @@ const sourceRepository = 'ABDO-TECK/pos-desktop';
 const tag = 'v0.0.15-beta.1';
 const baseline = '0.0.14';
 const target = tag.slice(1);
+const draftId = 460797291;
+const draftSlug = 'untagged-93051d264b68e8b62845';
 const checksumName = 'SHA256SUMS.txt';
 const notesName = 'release-notes.md';
 const transitionStems = [
@@ -32,6 +34,9 @@ assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.match(process.env.SOURCE_SHA ?? '', /^[a-f0-9]{40}$/);
 assert.match(process.env.GITHUB_SHA ?? '', /^[a-f0-9]{40}$/);
 
+const producerSha = mode === 'publish' ? process.env.STAGED_WORKFLOW_SHA : process.env.GITHUB_SHA;
+assert.match(producerSha ?? '', /^[a-f0-9]{40}$/);
+
 const read = (name, root = assetsDirectory) => readFileSync(path.join(root, name));
 const json = name => JSON.parse(read(name));
 const hash = (name, root) => createHash('sha256').update(read(name, root)).digest('hex');
@@ -45,7 +50,7 @@ assert.deepEqual(json('source-provenance.json'), {
   merged_pr_sha: 'e98ed9f5a25305af8c147e73a9a9737d983f3839',
   setup_tag: 'v0.0.14', setup_source_sha: 'cee698f8b5d2cb8577a485f9a07330184986e9a5',
   setup_inventory_sha256: '1d65fabbc8ec83c7786bb94fd530f587e5065a6bd0b78139ac4a4f63af7fa0fd',
-  updates_workflow_sha: process.env.GITHUB_SHA, stage_run_id: stageRunId,
+  updates_workflow_sha: producerSha, stage_run_id: stageRunId,
 });
 
 const hashes = new Map(required.map(name => [name, hash(name)]));
@@ -128,7 +133,10 @@ function verifyRelease(release, isDraft) {
   assert.equal(release.draft, isDraft);
   assert.equal(release.prerelease, true);
   assert.equal(release.tag_name, tag);
-  assert.equal(release.target_commitish, process.env.GITHUB_SHA);
+  assert.equal(release.id, draftId);
+  assert.equal(release.target_commitish, producerSha);
+  const releaseSlug = isDraft ? draftSlug : tag;
+  assert.equal(release.html_url, 'https://github.com/' + repository + '/releases/tag/' + releaseSlug);
   assert.equal(release.body.trimEnd(), read(notesName).toString().trimEnd());
   const seen = new Set();
   for (const asset of release.assets) {
@@ -137,7 +145,7 @@ function verifyRelease(release, isDraft) {
     assert.equal(asset.state, 'uploaded');
     assert.equal(asset.digest, 'sha256:' + hashes.get(asset.name), 'Different staged bytes: ' + asset.name);
     assert.equal(asset.size, read(asset.name).length);
-    assert.equal(asset.browser_download_url, 'https://github.com/' + repository + '/releases/download/' + tag + '/' + asset.name);
+    assert.equal(asset.browser_download_url, 'https://github.com/' + repository + '/releases/download/' + releaseSlug + '/' + asset.name);
     seen.add(asset.name);
   }
   return seen;
@@ -145,36 +153,23 @@ function verifyRelease(release, isDraft) {
 
 verifyStablePointers();
 let release = betaRelease();
+assert.equal(release?.id, draftId, 'The approved beta draft does not exist.');
+const tagObject = {
+  type: 'commit', sha: producerSha,
+  url: 'https://api.github.com/repos/' + repository + '/git/commits/' + producerSha,
+};
 const preexistingTag = betaTag();
-if (preexistingTag) {
-  assert(release && preexistingTag.type === 'commit' && preexistingTag.sha === process.env.GITHUB_SHA,
-    'Existing beta tag does not match this release.');
-}
-if (!release) {
-  gh(['release', 'create', tag, '--repo', repository, '--target', process.env.GITHUB_SHA,
-    '--title', 'POS Desktop ' + tag, '--notes-file', path.join(assetsDirectory, notesName),
-    '--draft', '--prerelease', '--latest=false']);
-  release = betaRelease();
-}
-assert(release, 'Beta release record is unavailable.');
-const releaseId = release.id;
-const uploaded = verifyRelease(release, release.draft);
+if (preexistingTag) assert.deepEqual(preexistingTag, tagObject);
+assert.equal(verifyRelease(release, release.draft).size, names.length);
+
+const releaseEndpoint = 'repos/' + repository + '/releases/' + draftId;
 if (release.draft) {
-  const missing = names.filter(name => !uploaded.has(name));
-  if (missing.length) {
-    gh(['release', 'upload', tag, '--repo', repository, ...missing.map(name => path.join(assetsDirectory, name))]);
-  }
-  release = api('repos/' + repository + '/releases/' + releaseId);
-  assert.equal(verifyRelease(release, true).size, names.length);
   verifyStablePointers();
-  gh(['release', 'edit', tag, '--repo', repository, '--draft=false', '--prerelease=true', '--latest=false']);
+  gh(['api', '--method', 'PATCH', releaseEndpoint, '-F', 'draft=false', '-F', 'prerelease=true', '-f', 'make_latest=false']);
 }
-release = api('repos/' + repository + '/releases/' + releaseId);
+release = api(releaseEndpoint);
 assert.equal(verifyRelease(release, false).size, names.length);
-assert.deepEqual(betaTag(), {
-  type: 'commit', sha: process.env.GITHUB_SHA,
-  url: 'https://api.github.com/repos/' + repository + '/git/commits/' + process.env.GITHUB_SHA,
-});
+assert.deepEqual(betaTag(), tagObject);
 verifyStablePointers();
 
 mkdirSync(downloadsDirectory);
