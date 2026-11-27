@@ -198,11 +198,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
-        with:
-          php-version: '8.2'
-          extensions: pdo_mysql, pdo_sqlite, mysqli, zip, openssl, phar, sqlite3, curl
-          coverage: none
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: beta15-public-checksums
@@ -224,7 +219,6 @@ jobs:
       - name: Exercise the public beta transition through the installed Update Center
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          composer install --working-dir=backend --no-dev --no-interaction --prefer-dist --no-progress
           ./scripts/verify-setup13-shell-baseline.ps1 -BinaryAcceptance
           ./scripts/verify-beta15-channel-ui.ps1 -Mode live -ReleaseAssets release-assets
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
