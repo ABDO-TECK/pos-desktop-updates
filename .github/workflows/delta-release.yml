@@ -3,249 +3,228 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: Source tag or commit in ABDO-TECK/pos-desktop
+        description: Reviewed POS Desktop beta source commit SHA
         required: true
       tag:
-        description: Existing delta tag (vX.Y.Z or vX.Y.Z-beta.N)
+        description: Beta release tag
         required: true
+        default: v0.0.15-beta.1
       publish:
-        description: Publish verified assets (otherwise validation only)
+        description: Publish the already verified artifact from a stage run
         type: boolean
         default: false
+      stage_run_id:
+        description: Successful stage run ID for publish mode
+        required: false
+
 permissions:
   contents: read
+  actions: read
+
 concurrency:
-  group: delta-${{ inputs.tag }}
+  group: beta-0.0.15-release
   cancel-in-progress: false
+
+env:
+  SOURCE_SHA: ${{ inputs.source_ref }}
+  BETA_TAG: ${{ inputs.tag }}
+
 jobs:
-  metadata:
+  guard:
     runs-on: ubuntu-latest
-    outputs:
-      mode: ${{ steps.release.outputs.mode }}
-      channel: ${{ steps.release.outputs.channel }}
-      prerelease: ${{ steps.release.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: ABDO-TECK/pos-desktop
-          ref: ${{ inputs.source_ref }}
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - id: release
+      - name: Verify beta and staging inputs
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: node scripts/release-metadata.mjs "$RELEASE_TAG"
-  build:
-    needs: metadata
-    if: needs.metadata.outputs.mode == 'delta'
+          GH_TOKEN: ${{ github.token }}
+          STAGE_RUN_ID: ${{ inputs.stage_run_id }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'ABDO-TECK/pos-desktop-updates' ]]
+          [[ "$GITHUB_REF" == 'refs/heads/codex/beta-0.0.15-release' ]]
+          [[ "$BETA_TAG" == 'v0.0.15-beta.1' ]]
+          [[ "$SOURCE_SHA" == '1cade27190cc7ed81456a86a174fc6f35f46ae62' ]]
+          if [[ "$PUBLISH" == true ]]; then
+            [[ "$STAGE_RUN_ID" =~ ^[0-9]+$ ]]
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGE_RUN_ID" |
+              jq -e --arg sha "$GITHUB_SHA" \
+                '.path == ".github/workflows/delta-release.yml" and .head_branch == "codex/beta-0.0.15-release" and
+                 .head_sha == $sha and .event == "workflow_dispatch" and .conclusion == "success" and
+                 .head_repository.full_name == "ABDO-TECK/pos-desktop-updates"'
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGE_RUN_ID/jobs" |
+              jq -e '[.jobs[] | select(.name == "Build, sign, and verify on Windows" and .conclusion == "success")] | length == 1'
+          else
+            [[ -z "$STAGE_RUN_ID" ]]
+          fi
+
+  stage:
+    name: Build, sign, and verify on Windows
+    needs: guard
+    if: '!inputs.publish'
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: source
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: ABDO-TECK/pos-desktop
           ref: ${{ inputs.source_ref }}
-          persist-credentials: false
+          path: source
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: |
-            package-lock.json
-            frontend/package-lock.json
-      - uses: shivammathur/setup-php@v2
+            source/package-lock.json
+            source/frontend/package-lock.json
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: '8.2'
-          extensions: pdo_mysql, pdo_sqlite, mysqli, gd, mbstring, dom, xml, xmlwriter, zip, openssl, phar, sqlite3
+          extensions: pdo_mysql, pdo_sqlite, mysqli, gd, mbstring, dom, xml, xmlwriter, zip, openssl, phar, sqlite3, curl
           coverage: none
-      - name: Build and verify application artifacts
-        shell: pwsh
+      - name: Build the exact merged application payload
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           npm ci
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm --prefix frontend ci
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           composer install --working-dir=backend --no-dev --no-interaction --prefer-dist --no-progress
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm --prefix frontend run typecheck
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm run frontend:build
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm run build:phar
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           php scripts/verify-phar-runtime.php
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          php scripts/verify-asset-download.php
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          php scripts/verify-fleet-history.php
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-rollback-catalog.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-rollback-flow.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-duplicate-release-entries.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          php scripts/verify-delta-download-failure.php
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-asset-download-https.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-update-repair.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          php scripts/verify-update-execution-budget.php
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-update-http-timeout.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-update-notifications.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           php scripts/verify-release-channels.php
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node scripts/verify-update-channel-policy.cjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node scripts/verify-delta-flow.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Verify channel transition policy, signatures and service boundaries
-        if: needs.metadata.outputs.channel == 'beta' && hashFiles('scripts/build-channel-transition.php') != ''
-        shell: pwsh
-        run: |
-          php scripts/verify-active-channels.php
-          if ($LASTEXITCODE) { throw 'Active channel verification failed.' }
-          php scripts/verify-transition-catalog.php
-          if ($LASTEXITCODE) { throw 'Transition catalog verification failed.' }
           php scripts/verify-transition-manifest.php
-          if ($LASTEXITCODE) { throw 'Transition authority verification failed.' }
+          php scripts/verify-channel-transition-builder.php
           node scripts/verify-channel-transition-flow.mjs
-          if ($LASTEXITCODE) { throw 'Transition service verification failed.' }
-          php scripts/verify-transition-api.php
-          if ($LASTEXITCODE) { throw 'Transition API protection failed.' }
           node scripts/verify-transition-receipt-http.mjs
-          if ($LASTEXITCODE) { throw 'Independent production receipt failed.' }
-          php scripts/verify-transition-metadata-restore.php
-          if ($LASTEXITCODE) { throw 'Restored metadata regression failed.' }
-          node scripts/verify-transition-ui.mjs
-          if ($LASTEXITCODE) { throw 'React channel preview/wait regression failed.' }
-          node scripts/verify-transition-publication.mjs
-          if ($LASTEXITCODE) { throw 'Transition publication policy failed.' }
-      - name: Prepare an ephemeral local candidate tag for validation only
-        if: needs.metadata.outputs.channel == 'beta' && hashFiles('scripts/build-channel-transition.php') != '' && !inputs.publish
-        shell: pwsh
-        env:
-          CANDIDATE_TAG: ${{ inputs.tag }}
-        run: |
-          git rev-parse --verify "refs/tags/$env:CANDIDATE_TAG" 2>$null
-          if ($LASTEXITCODE) {
-            git tag $env:CANDIDATE_TAG HEAD
-            if ($LASTEXITCODE) { throw 'Cannot mark detached validation candidate.' }
-          }
-      - name: Generate and verify signed packages for every supported baseline
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-          RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
-        run: ./scripts/build-delta-release.ps1 -Tag $env:RELEASE_TAG -Channel $env:RELEASE_CHANNEL
-      - name: Measure data compatibility using the original Setup on an isolated runner
-        if: needs.metadata.outputs.channel == 'beta' && hashFiles('scripts/build-channel-transition.php') != ''
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/prepare-channel-transition-ui.ps1 -Phase contract
-      - name: Sign changed-only and complete return bundles carried on beta
-        if: needs.metadata.outputs.channel == 'beta' && hashFiles('scripts/build-channel-transition.php') != ''
-        shell: pwsh
+          php scripts/verify-shell-release-delivery.php
+          node scripts/verify-admin-update-ui.mjs
+      - name: Verify the published Setup and compare the actual MariaDB contracts
+        run: ../tooling/scripts/stage-beta15.ps1 -Phase Prepare
+      - name: Sign exact 0.0.14 and beta application inventories and packages
         env:
           UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
-        run: |
-          $lab=Join-Path $env:RUNNER_TEMP 'channel-transition-ui-lab'
-          php scripts/build-channel-transition.php "--target-root=$lab/app/resources/app.asar.unpacked" "--shell-root=$lab/app" "--target-inventory=$lab/deployment-inventory.json" "--contract=$lab/data-contract.json" --output=release-assets
-          if ($LASTEXITCODE) { throw 'Transition signing or byte verification failed.' }
-      - name: Verify both channel directions and delta/full return through the real Setup UI
-        if: needs.metadata.outputs.channel == 'beta' && hashFiles('scripts/build-channel-transition.php') != ''
-        shell: pwsh
-        run: |
-          ./scripts/prepare-channel-transition-ui.ps1 -Phase acceptance
-          if ($LASTEXITCODE) { throw 'Actual channel UI acceptance failed.' }
-          Copy-Item -LiteralPath "$env:RUNNER_TEMP/channel-transition-ui-evidence/acceptance.json" -Destination 'release-assets/channel-transition-acceptance.json'
-      - uses: actions/upload-artifact@v4
-        if: always() && needs.metadata.outputs.channel == 'beta' && hashFiles('scripts/build-channel-transition.php') != ''
+        run: ../tooling/scripts/stage-beta15.ps1 -Phase Sign
+      - name: Freeze the signed release asset digests
+        run: node ../tooling/scripts/verify-beta15-release.mjs freeze release-assets $env:GITHUB_RUN_ID
+      - name: Verify the signed release in the installed Setup 0.0.14 UI
+        run: ./scripts/verify-beta15-channel-ui.ps1 -Mode staged -ReleaseAssets release-assets
+      - name: Verify the accepted bytes match the signed stage
+        run: node ../tooling/scripts/verify-beta15-release.mjs verify release-assets $env:GITHUB_RUN_ID
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: channel-transition-ui-evidence
-          path: ${{ runner.temp }}/channel-transition-ui-evidence
-          if-no-files-found: ignore
-          retention-days: 14
-      - uses: actions/upload-artifact@v4
-        if: failure() && needs.metadata.outputs.channel == 'beta' && hashFiles('scripts/build-channel-transition.php') != ''
-        with:
-          name: channel-transition-debug-packages
-          path: release-assets/*
-          if-no-files-found: ignore
-          retention-days: 3
-      - name: Build signed one-time repair and verify real installed baselines
-        if: inputs.tag == 'v0.0.10-beta.2'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
-        run: |
-          php scripts/build-update-repair.php release-assets
-          if ($LASTEXITCODE) { throw 'Repair tool signing failed.' }
-          $env:UPDATE_PRIVATE_KEY = ''
-          ./scripts/verify-signed-update-repair.ps1 -Assets release-assets
-          if ($LASTEXITCODE) { throw 'Signed repair acceptance failed.' }
-      - name: Checkout acceptance-only rendered-control wait correction
-        if: inputs.tag == 'v0.0.10-beta.4'
-        uses: actions/checkout@v4
-        with:
-          repository: ABDO-TECK/pos-desktop
-          ref: a00dd84dda56ef50d0bd9880cd0eb24802c88ed7
-          path: rollback-acceptance-source
-          persist-credentials: false
-          sparse-checkout: scripts/verify-rollback-ui.mjs
-          sparse-checkout-cone-mode: false
-      - name: Verify update and rollback through the real original Setup UI
-        if: inputs.tag == 'v0.0.10-beta.4'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          Copy-Item -LiteralPath 'rollback-acceptance-source/scripts/verify-rollback-ui.mjs' -Destination 'scripts/verify-rollback-ui.mjs'
-          ./scripts/prepare-rollback-ui.ps1
-      - uses: actions/upload-artifact@v4
-        if: always() && inputs.tag == 'v0.0.10-beta.4'
-        with:
-          name: rollback-ui-evidence
-          path: ${{ runner.temp }}/rollback-ui-evidence
-          if-no-files-found: ignore
-          retention-days: 14
-      - uses: actions/upload-artifact@v4
-        with:
-          name: signed-delta
-          path: release-assets/*
+          name: beta15-signed-release
+          path: source/release-assets/*
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: beta15-staged-evidence
+          path: |
+            ${{ runner.temp }}/setup14-shell/evidence
+            ${{ runner.temp }}/shell-release-a44773e9675841a3be53781c0c4d2ffa/evidence
+            ${{ runner.temp }}/beta15-channel-staged/evidence
+          if-no-files-found: warn
+          retention-days: 14
+
   publish:
-    needs: [metadata, build]
+    needs: guard
     if: inputs.publish
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: write
+      actions: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          name: signed-delta
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: beta15-signed-release
+          repository: ABDO-TECK/pos-desktop-updates
+          run-id: ${{ inputs.stage_run_id }}
+          github-token: ${{ github.token }}
           path: release-assets
-      - name: Publish signed assets on the updates repository
+      - name: Publish the exact accepted beta and verify every public asset
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-          REPOSITORY: ${{ github.repository }}
-          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
-        run: |
-          set -euo pipefail
-          flags=(--latest)
-          if [ "$PRERELEASE" = "true" ]; then flags=(--prerelease --latest=false); fi
-          mv release-assets/release-notes.md release-notes.md
-          gh release create "$RELEASE_TAG" release-assets/* --repo "$REPOSITORY" --title "POS Desktop $RELEASE_TAG" --notes-file release-notes.md "${flags[@]}"
+          STAGE_RUN_ID: ${{ inputs.stage_run_id }}
+        run: node scripts/verify-beta15-release.mjs publish release-assets "$STAGE_RUN_ID" public-assets
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: beta15-public-checksums
+          path: public-assets/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
 
+  live:
+    name: Verify the real public beta in Setup 0.0.14
+    needs: publish
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: source
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ABDO-TECK/pos-desktop
+          ref: ${{ inputs.source_ref }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, pdo_sqlite, mysqli, zip, openssl, phar, sqlite3, curl
+          coverage: none
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: beta15-public-checksums
+          path: public-checksums
+      - name: Verify published checksums and prepare signed public assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          gh release download $env:BETA_TAG --repo ABDO-TECK/pos-desktop-updates --pattern '*' --dir release-assets
+          $publicChecksum = (Get-FileHash -LiteralPath 'release-assets/SHA256SUMS.txt').Hash
+          $acceptedChecksum = (Get-FileHash -LiteralPath '../public-checksums/SHA256SUMS.txt').Hash
+          if ($publicChecksum -cne $acceptedChecksum) { throw 'Public checksum file changed.' }
+          foreach ($record in Get-Content -LiteralPath 'release-assets/SHA256SUMS.txt') {
+            if ($record -cnotmatch '^([a-f0-9]{64})  ([A-Za-z0-9._-]+)$') { throw 'Invalid checksum record.' }
+            $hash = (Get-FileHash -LiteralPath (Join-Path 'release-assets' $Matches[2])).Hash.ToLowerInvariant()
+            if ($hash -cne $Matches[1]) { throw 'Public asset differs from the accepted bytes.' }
+          }
+      - name: Exercise the public beta transition through the installed Update Center
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          composer install --working-dir=backend --no-dev --no-interaction --prefer-dist --no-progress
+          ./scripts/verify-setup13-shell-baseline.ps1 -BinaryAcceptance
+          ./scripts/verify-beta15-channel-ui.ps1 -Mode live -ReleaseAssets release-assets
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: beta15-public-evidence
+          path: ${{ runner.temp }}/beta15-channel-live/evidence
+          if-no-files-found: warn
+          retention-days: 14
